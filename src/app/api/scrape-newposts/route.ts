@@ -315,6 +315,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const allFailures: PageFailure[] = [];
 
     let page = from;
+    // 新着が尽きて止まった回も、そのページは処理し終えている。page から
+    // 逆算すると 0 と報告してしまい、走ったのかどうか分からなくなる。
+    let lastProcessedPage = from - 1;
 
     while (to === null || page <= to) {
       try {
@@ -329,6 +332,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
           break;
         }
+
+        lastProcessedPage = page;
 
         if (stopWhenNoNewArticles && result.newArticles === 0) {
           console.log(
@@ -348,13 +353,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     console.log(
-      `Scraping completed. Failed articles: ${allFailures.length}, Last page: ${page - 1}`,
+      `Scraping completed. Failed articles: ${allFailures.length}, Last page: ${lastProcessedPage}`,
     );
 
     return NextResponse.json({
       failedArticles: allFailures.length,
       failures: allFailures,
-      lastProcessedPage: page - 1,
+      lastProcessedPage,
       success: true,
     });
   } catch (error) {
