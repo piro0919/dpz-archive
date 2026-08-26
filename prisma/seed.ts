@@ -11,16 +11,16 @@ if (!process.env.POSTGRES_PRISMA_URL) {
   throw new Error("POSTGRES_PRISMA_URL is not set in .env.development.local");
 }
 
-if (!process.env.VERCEL_POSTGRES_URL) {
-  throw new Error("VERCEL_POSTGRES_URL is not set in .env.development.local");
+if (!process.env.NEON_POSTGRES_URL) {
+  throw new Error("NEON_POSTGRES_URL is not set in .env.development.local");
 }
 
 const dockerPrisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.POSTGRES_PRISMA_URL }),
   log: ["warn", "error"],
 });
-const vercelPrisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.VERCEL_POSTGRES_URL }),
+const neonPrisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.NEON_POSTGRES_URL }),
   log: ["warn", "error"],
 });
 // 設定値の調整
@@ -126,7 +126,7 @@ async function migrateCategories() {
 
     await withRetry(
       async () => {
-        await vercelPrisma.$transaction(
+        await neonPrisma.$transaction(
           async (tx) => {
             for (const category of batch) {
               console.log(`  Processing category: ${category.name}`);
@@ -196,7 +196,7 @@ async function migrateWriters() {
 
       await withRetry(
         async () => {
-          await vercelPrisma.$transaction(
+          await neonPrisma.$transaction(
             async (tx) => {
               for (const writer of transactionBatch) {
                 await tx.writer.upsert({
@@ -301,7 +301,7 @@ async function migrateArticles(
 
         await withRetry(
           async () => {
-            await vercelPrisma.$transaction(
+            await neonPrisma.$transaction(
               async (tx) => {
                 for (const article of transactionBatch) {
                   // eslint-disable-next-line @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars
@@ -396,7 +396,7 @@ async function main() {
     console.log("🚀 Starting database migration");
     console.log("\nConfiguration:");
     console.log(`Source database: ${process.env.POSTGRES_PRISMA_URL}`);
-    console.log(`Target database: ${process.env.VERCEL_POSTGRES_URL}`);
+    console.log(`Target database: ${process.env.NEON_POSTGRES_URL}`);
     console.log(`Batch size: ${BATCH_SIZE}`);
     console.log(`Transaction batch size: ${TRANSACTION_BATCH_SIZE}`);
     console.log(`Transaction timeout: ${TRANSACTION_TIMEOUT}ms`);
@@ -445,7 +445,7 @@ async function main() {
   } finally {
     console.log("\n🔄 Closing database connections...");
     await dockerPrisma.$disconnect();
-    await vercelPrisma.$disconnect();
+    await neonPrisma.$disconnect();
   }
 }
 
@@ -457,6 +457,6 @@ process.on("unhandledRejection", (error) => {
 main().catch(async (e) => {
   console.error("\n❌ Fatal error:", e);
   await dockerPrisma.$disconnect();
-  await vercelPrisma.$disconnect();
+  await neonPrisma.$disconnect();
   process.exit(1);
 });
