@@ -168,6 +168,41 @@ async function resolveName(articleUrls: string[]): Promise<ResolvedWriter[]> {
   return first;
 }
 
+// 解決したライターを DB の行に対応づける。表記が違うだけの既知のライターなら、
+// 行を増やさず既存に繋ぐ。
+async function ensureWriterIds(
+  writers: ResolvedWriter[],
+  idByProfileUrl: Map<string, string>,
+  created: string[],
+): Promise<string[]> {
+  const ids: string[] = [];
+
+  for (const writer of writers) {
+    const existingId = idByProfileUrl.get(writer.profileUrl);
+
+    if (existingId) {
+      ids.push(existingId);
+
+      continue;
+    }
+
+    const upserted = await prisma.writer.upsert({
+      create: writer,
+      update: {
+        avatarUrl: writer.avatarUrl,
+        profileUrl: writer.profileUrl,
+      },
+      where: { name: writer.name },
+    });
+
+    ids.push(upserted.id);
+    idByProfileUrl.set(writer.profileUrl, upserted.id);
+    created.push(writer.name);
+  }
+
+  return ids;
+}
+
 // 多対多の接続は 1 件ずつだと往復が嵩むので、まとめて渡す。
 async function connectArticles(
   writerId: string,
@@ -191,6 +226,61 @@ async function connectArticles(
   }
 
   return articles.length;
+}
+
+// 署名の枠を持たない記事は毎回引いても無駄なので、URL の第 1 セグメントで外す。
+// 旧 /b/ 時代のページには .writer-detail が無く、TV（動画）と koresugo（読者投稿）
+// には個人の書き手が付かない。
+const UNLINKABLE_SEGMENTS = ["b", "koresugo", "tv"];
+
+// 名前単位の解決は連名を捌けない。「べつやくれい・林雄司」の代表記事はそれぞれ
+// 別の 1 人を指すので食い違いと判定され、その名前の記事が丸ごと残る。
+// 残った分は記事ごとに引いて繋ぐ。件数が少ないからできる後始末で、
+// 索引を辿る本筋の代わりにはならない。
+async function linkUnlinkedArticles(limit: number): Promise<{
+  created: string[];
+  linked: number;
+  scanned: number;
+}> {
+  const articles = await prisma.article.findMany({
+    orderBy: { publishedAt: "desc" },
+    select: { id: true, url: true },
+    take: limit,
+    where: {
+      NOT: UNLINKABLE_SEGMENTS.map((segment) => ({
+        url: { startsWith: `${BASE_URL}/${segment}/` },
+      })),
+      writers: { none: {} },
+    },
+  });
+  const stored = await prisma.writer.findMany({
+    select: { id: true, profileUrl: true },
+  });
+  const idByProfileUrl = new Map(stored.map((w) => [w.profileUrl, w.id]));
+  const created: string[] = [];
+
+  let linked = 0;
+
+  for (const article of articles) {
+    const writers = await resolveWritersFromArticle(article.url);
+
+    await sleep(ARTICLE_DELAY);
+
+    if (writers.length === 0) {
+      continue;
+    }
+
+    const writerIds = await ensureWriterIds(writers, idByProfileUrl, created);
+
+    await prisma.article.update({
+      data: { writers: { connect: writerIds.map((id) => ({ id })) } },
+      where: { id: article.id },
+    });
+
+    linked++;
+  }
+
+  return { created, linked, scanned: articles.length };
 }
 
 function parsePositiveInt(value: null | string, fallback: number): number {
@@ -219,6 +309,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const to = parsePositiveInt(searchParams.get("to"), from);
 
   try {
+    // unlinked=1 は索引を辿らず、まだ書き手の付いていない記事だけを拾い直す。
+    if (searchParams.get("unlinked")) {
+      const limit = parsePositiveInt(searchParams.get("limit"), 100);
+      const result = await linkUnlinkedArticles(limit);
+
+      return NextResponse.json({ ...result, success: true });
+    }
+
     const articleUrlsByName = new Map<string, string[]>();
 
     for (let page = from; page <= to; page++) {
@@ -261,32 +359,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           continue;
         }
 
-        writerIds = [];
-
-        for (const writer of writers) {
-          // 表記が違うだけの既知のライターなら、行を増やさず既存に繋ぐ。
-          const existingId = idByProfileUrl.get(writer.profileUrl);
-
-          if (existingId) {
-            writerIds.push(existingId);
-
-            continue;
-          }
-
-          const upserted = await prisma.writer.upsert({
-            create: writer,
-            update: {
-              avatarUrl: writer.avatarUrl,
-              profileUrl: writer.profileUrl,
-            },
-            where: { name: writer.name },
-          });
-
-          writerIds.push(upserted.id);
-          idByProfileUrl.set(writer.profileUrl, upserted.id);
-          created.push(writer.name);
-        }
-
+        writerIds = await ensureWriterIds(writers, idByProfileUrl, created);
         idsByName.set(name, writerIds);
       }
 

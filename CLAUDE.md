@@ -104,6 +104,11 @@ The application uses PostgreSQL with three main models:
 あるので文字列では割れない。記事ページの `.writer-detail` は連名だと枠が複数並ぶため、そちらを
 全部拾う。
 
+名前単位の解決は連名を捌けない。「べつやくれい・林雄司」の代表記事はそれぞれ別の 1 人を
+指すので食い違いと判定され、その名前の記事が丸ごと残る。残った分は
+`discover-writers?unlinked=1` が記事ごとに引いて繋ぐ。件数が少ないからできる後始末で、
+索引を辿る本筋の代わりにはならない。
+
 以下は原理的に紐付かない。追いかけても取れないので、網羅率を見るときは差し引く。
 
 - 旧 `/b/` 時代（2018 年のリニューアル以前）の記事ページには `.writer-detail` が無く、
@@ -119,6 +124,7 @@ The application uses PostgreSQL with three main models:
 | `GET /api/scrape-newposts?from=1&to=20`   | ページ範囲を指定した初回取り込み。全 285 ページは 300 秒に入らないので分割する |
 | `GET /api/scrape-writers`                 | `/writer` から 89 人を upsert                                                  |
 | `GET /api/discover-writers?from=1&to=60`  | 索引から書き手名を拾い、未知の名前をライターページへ解決して紐付ける           |
+| `GET /api/discover-writers?unlinked=1`    | 書き手の付いていない記事を記事ごとに引き直す。連名の後始末。`limit` で件数指定 |
 | `GET /api/link-writers?offset=0&limit=10` | ライター別の記事一覧を辿って紐付ける。レスポンスの `nextOffset` で継続         |
 
 `vercel.json` の cron は `scrape-newposts` だけ。残りは分割実行が要るので手動で叩く。
