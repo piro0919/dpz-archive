@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an unofficial archive site for Omocoro (おもこロ), a Japanese comedy content website. The application is built with Next.js 15 and React 19, featuring a progressive web app (PWA) with service worker support and providing search functionality for archived articles.
+This is an unofficial archive site for デイリーポータルZ (https://dailyportalz.jp/), a Japanese comedy content website. The application is built with Next.js 15 and React 19, featuring a progressive web app (PWA) with service worker support and providing search functionality for archived articles.
+
+It was forked from `omocoro-archive`, which archives a different site with the same schema and UI. The two repositories are maintained separately; changes do not propagate between them.
+
+Only titles, thumbnails, links and publication dates are stored. Article bodies are never fetched or persisted.
 
 ## Common Development Commands
 
@@ -48,7 +52,7 @@ This is an unofficial archive site for Omocoro (おもこロ), a Japanese comedy
 The application uses PostgreSQL with three main models:
 
 - **Article**: Core content model with title, URL, thumbnail, category, writers, and publication date
-- **Category**: Content categories (マンガ, コラム, 動画, 企画) with onigiri flag support
+- **Category**: Content categories (記事, 編集部日記, これすごくない？, TV)
 - **Writer**: Author profiles with avatar and profile URLs
 
 ### Key Technical Patterns
@@ -63,16 +67,46 @@ The application uses PostgreSQL with three main models:
 
 - `src/app/` - Next.js App Router pages and components
 - `src/app/_components/` - Shared application components
-- `src/app/api/` - API routes for scraping and proxy functionality
+- `src/app/api/` - API routes for scraping and querying
 - `src/lib/` - Utility libraries (cookies, Prisma client)
 - `prisma/` - Database schema and migrations
+
+## Scraping
+
+デイリーポータルZ の HTML はおもころとは構造が違うので、スクレイパーは共有できない。
+
+- 記事の取得元は `/kiji` のバックナンバー索引。1 ページ 120 件、285 ページ、2002 年まで遡れる。
+  ページングは `?ccm_paging_p=N&ccm_order_by=h.publicDate&ccm_order_by_direction=desc`
+- 一覧の行は `.headline-row`。タイトルと URL は `a.headline`、サムネイルは `.td-thumb img`、
+  日付は本文末尾の `[YYYY/MM/DD]`。時刻は持っていないので日本時間の 0 時として保存する
+- 一覧にカテゴリー欄は無い。URL の第 1 セグメントから導く。`kiji` と `b` はどちらも通常の記事で、
+  `b` は 2018 年のリニューアル以前のもの
+- 外部サイトへ飛ぶ行（カインズマガジン、YouTube、旧 nifty ブログ）が混ざるので、
+  dailyportalz.jp 以外のホストは弾く
+
+### ライターの紐付け
+
+一覧はライター名を地の文で持つだけで、リンクも ID も無い。表記も時代で揺れる（「林 雄司」と「林雄司」）。
+名前で突き合わせると外れるので、`/writer/kijilist/<id>` を辿って URL で突き合わせる。
+サイドバーの「今大人気の記事」はそのライターの記事とは限らないため、`#mainContentsInner` の中だけを見る。
+
+### 各ルート
+
+| ルート | 役割 |
+| --- | --- |
+| `GET /api/scrape-newposts` | `/kiji` を 1 ページ目から辿り、新着が尽きたら停止。日次 cron |
+| `GET /api/scrape-newposts?from=1&to=20` | ページ範囲を指定した初回取り込み。全 285 ページは 300 秒に入らないので分割する |
+| `GET /api/scrape-writers` | `/writer` から 89 人を upsert |
+| `GET /api/link-writers?offset=0&limit=10` | 記事とライターを紐付ける。レスポンスの `nextOffset` で継続 |
+
+`vercel.json` の cron は `scrape-newposts` だけ。`link-writers` は分割実行が要るので手動で叩く。
 
 ## Environment Setup
 
 ### Database Environments
 
 - **Local Development**: Uses Docker PostgreSQL (port 54320) with WebSocket proxy (port 54330)
-- **Production**: Uses Vercel Postgres with connection pooling
+- **Production**: Uses Neon with connection pooling
 
 ### Environment Variables
 
