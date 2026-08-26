@@ -15,7 +15,7 @@ Only titles, thumbnails, links and publication dates are stored. Article bodies 
 ### Development
 
 - `npm run dev` - Start development server with local Docker PostgreSQL
-- `npm run dev:prod` - Start development server with Vercel Postgres
+- `npm run dev:prod` - Start development server against Neon
 
 ### Building & Linting
 
@@ -30,9 +30,9 @@ Only titles, thumbnails, links and publication dates are stored. Article bodies 
 
 - `npm run migrate:create -- --name [migration_name]` - Create new migration
 - `npm run migrate:dev` - Run migrations on local Docker
-- `npm run migrate:prod` - Run migrations on Vercel Postgres
+- `npm run migrate:prod` - Run migrations on Neon
 - `npm run studio:dev` - Open Prisma Studio for local Docker
-- `npm run studio:prod` - Open Prisma Studio for Vercel Postgres
+- `npm run studio:prod` - Open Prisma Studio for Neon
 - `npm run seed` - Seed database with initial data
 
 ### Code Quality & Analysis
@@ -43,7 +43,7 @@ Only titles, thumbnails, links and publication dates are stored. Article bodies 
 
 ### Docker
 
-- `docker-compose up` - Start local PostgreSQL with WebSocket proxy
+- `docker-compose up` - Start local PostgreSQL
 
 ## Architecture & Data Models
 
@@ -90,28 +90,58 @@ The application uses PostgreSQL with three main models:
 名前で突き合わせると外れるので、`/writer/kijilist/<id>` を辿って URL で突き合わせる。
 サイドバーの「今大人気の記事」はそのライターの記事とは限らないため、`#mainContentsInner` の中だけを見る。
 
+**`/writer` に載っているのは 89 人だけで、全体ではない。** そこに出てこない寄稿者が大勢いる
+（例：`旅人YAMA` は記事ページからライターページを持つのに一覧に出ない）。`/writer` だけを
+見ていた頃は 3 分の 1 の記事が紐付かなかった。
+
+そこで `discover-writers` は索引の側から辿る。索引の行末は「…本文（林 雄司） [2026/08/26]」の
+形で書き手名を持つので、名前ごとに記事をまとめ、知らない名前だけ代表記事 3 本を引いて
+`.writer-detail` のライターページへ解決する。3 本が同じ顔ぶれを指すときだけ採用し、
+食い違えば同姓同名を疑って手を出さない。表記ゆれは、どの表記から引いても同じライターページに
+着くので自然に吸収される。
+
+連名は索引側の区切りが `/`、`・`、`、` と揺れる上、`ヨーロッパ企画・中田` のような 1 人の名前も
+あるので文字列では割れない。記事ページの `.writer-detail` は連名だと枠が複数並ぶため、そちらを
+全部拾う。
+
+以下は原理的に紐付かない。追いかけても取れないので、網羅率を見るときは差し引く。
+
+- 旧 `/b/` 時代（2018 年のリニューアル以前）の記事ページには `.writer-detail` が無く、
+  ライターページへのリンクも一切ない
+- これすごくない？（読者投稿）と TV（動画）には個人の書き手が付かない
+- `デイリーポータルZ編集部`、`コネタ道場`、`読者投稿` などは人ではなく札
+
 ### 各ルート
 
-| ルート | 役割 |
-| --- | --- |
-| `GET /api/scrape-newposts` | `/kiji` を 1 ページ目から辿り、新着が尽きたら停止。日次 cron |
-| `GET /api/scrape-newposts?from=1&to=20` | ページ範囲を指定した初回取り込み。全 285 ページは 300 秒に入らないので分割する |
-| `GET /api/scrape-writers` | `/writer` から 89 人を upsert |
-| `GET /api/link-writers?offset=0&limit=10` | 記事とライターを紐付ける。レスポンスの `nextOffset` で継続 |
+| ルート                                    | 役割                                                                           |
+| ----------------------------------------- | ------------------------------------------------------------------------------ |
+| `GET /api/scrape-newposts`                | `/kiji` を 1 ページ目から辿り、新着が尽きたら停止。日次 cron                   |
+| `GET /api/scrape-newposts?from=1&to=20`   | ページ範囲を指定した初回取り込み。全 285 ページは 300 秒に入らないので分割する |
+| `GET /api/scrape-writers`                 | `/writer` から 89 人を upsert                                                  |
+| `GET /api/discover-writers?from=1&to=60`  | 索引から書き手名を拾い、未知の名前をライターページへ解決して紐付ける           |
+| `GET /api/link-writers?offset=0&limit=10` | ライター別の記事一覧を辿って紐付ける。レスポンスの `nextOffset` で継続         |
 
-`vercel.json` の cron は `scrape-newposts` だけ。`link-writers` は分割実行が要るので手動で叩く。
+`vercel.json` の cron は `scrape-newposts` だけ。残りは分割実行が要るので手動で叩く。
+
+`discover-writers` と `link-writers` は向きが逆で、結果は補い合う。前者は索引から、後者は
+ライター別の一覧から辿る。初回は `scrape-writers` → `scrape-newposts` → `discover-writers` の順。
 
 ## Environment Setup
 
 ### Database Environments
 
-- **Local Development**: Uses Docker PostgreSQL (port 54320) with WebSocket proxy (port 54330)
-- **Production**: Uses Neon with connection pooling
+- **Local Development**: Uses Docker PostgreSQL (port 54320) over plain TCP
+- **Region**: Neon も Vercel の関数も `sin1`（シンガポール、AWS の ap-southeast-1）。
+  Neon は東京を持っていないので、日本から最寄りはここになる。関数と DB が離れると往復が
+  伸びるため、`vercel.json` の `regions` で関数側も揃えてある
+- **Production**: Uses Neon. `POSTGRES_PRISMA_URL` はプール側、`POSTGRES_URL_NON_POOLING` は非プール側。接続は `@prisma/adapter-pg` の TCP で、`@vercel/postgres` や `@neondatabase/serverless` は使わない
 
 ### Environment Variables
 
 - `CRON_SECRET` - Required for cron job authentication (defined in src/env.ts)
-- Database URLs are automatically configured for Vercel deployment
+- `POSTGRES_PRISMA_URL` / `POSTGRES_URL_NON_POOLING` - Neon のプール側と非プール側。
+  Vercel の Neon 連携が本番へ注入する。ローカルは `.env.development.local` に Docker の値を置く
+- `NEON_POSTGRES_URL` - `prisma/seed.ts` だけが読む、ローカルから Neon へ流し込むときの宛先
 
 ## Code Style & Standards
 

@@ -51,3 +51,8 @@ public/robots.txt
 
 # Lighthouse CI reports
 .lighthouseci
+
+# Neon の連携が入れるエージェント用スキル
+.agents/
+.claude/skills/
+skills-lock.json
