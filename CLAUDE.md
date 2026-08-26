@@ -129,6 +129,13 @@ The application uses PostgreSQL with three main models:
 
 `vercel.json` の cron は `scrape-newposts` だけ。残りは分割実行が要るので手動で叩く。
 
+**cron の時刻は UTC で解釈される。** `0 0 * * *` は日本時間の 9:00。日本時間で書いたつもりに
+なると 9 時間ずれる。1 ページ目から新着が尽きるまで辿る作りなので、時刻がずれても
+取りこぼしは起きないが、ログを読むときに混乱する。
+
+手で発火させるなら `npx vercel cron run /api/scrape-newposts`。Vercel が `CRON_SECRET` の
+Authorization ヘッダを付けるので、本番と同じ経路を通せる。
+
 `discover-writers` と `link-writers` は向きが逆で、結果は補い合う。前者は索引から、後者は
 ライター別の一覧から辿る。初回は `scrape-writers` → `scrape-newposts` → `discover-writers` の順。
 

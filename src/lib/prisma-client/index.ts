@@ -6,10 +6,25 @@ const globalForPrisma = global as unknown as {
   prismaDirect: PrismaClient | undefined;
 };
 
+// pg は sslmode の require / prefer / verify-ca を verify-full の別名として扱っており、
+// 次の major で libpq 本来の緩い意味に変わると警告を出す。今の挙動が verify-full な
+// 以上、明示しても接続は変わらず、将来の格下げだけを防げる。ローカルの Docker は
+// sslmode を持たないので、書いてあるときだけ触る。
+function withExplicitSsl(url: string): string {
+  return url.replace(
+    /([?&]sslmode=)(require|prefer|verify-ca)\b/g,
+    "$1verify-full",
+  );
+}
+
 // Prisma 7 は接続先を schema からではなくドライバアダプタから受け取る。
 // 通常のリクエストはプール側、長く走る仕事は非プール側という使い分けは変えない。
 function createClient(connectionString: string): PrismaClient {
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+  return new PrismaClient({
+    adapter: new PrismaPg({
+      connectionString: withExplicitSsl(connectionString),
+    }),
+  });
 }
 
 export const prismaClient =

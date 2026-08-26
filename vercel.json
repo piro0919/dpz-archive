@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/scrape-newposts",
-      "schedule": "0 9 * * *"
+      "schedule": "0 0 * * *"
     }
   ],
   "regions": ["sin1"]
