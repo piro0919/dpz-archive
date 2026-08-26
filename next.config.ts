@@ -15,6 +15,9 @@ const nextConfig: NextConfig = withSerwist({
   },
   images: {
     remotePatterns: [{ hostname: "dailyportalz.jp", protocol: "https" }],
+    // Vercel の画像最適化は変換と保管が課金対象。索引が配るサムネイルは
+    // 100x100 の 12KB で、縮めても得るものが無い。素のまま配る。
+    unoptimized: true,
   },
   reactStrictMode: false,
 });

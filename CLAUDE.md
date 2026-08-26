@@ -179,7 +179,14 @@ Uses conventional commits with additional rules:
 ## Development Notes
 
 - React Strict Mode is disabled for compatibility
-- Images are unoptimized in Next.js config
+- **画像は最適化しない（`next.config.ts` の `unoptimized: true`）。** Vercel の画像最適化は
+  変換と保管が課金対象で、`kk-web` は Pro なので超過ぶんが請求される。
+  索引が配るサムネイルは 100x100 の 12KB しかなく、縮めても得るものが無い。
+  ここを有効に戻すと記事 32,000 件ぶんの変換が課金対象になるので、触らないこと
+- サムネイルは索引の一覧が持つ 100x100 のものだけ。記事ページの og:image は 640x360〜
+  1280x720 で見栄えは良いが、1 枚 60〜930KB あり、最適化を切っている以上そのまま配られる。
+  一覧 24 件で 5MB になるので採らない。`thumbnails/file_manager_listing/` を外すと原本に
+  当たるが、幅の中央値は 60px で index のサムネイルより小さい（100 件で実測）
 - Uses React 19 with backwards compatibility overrides
 - Service worker disabled in development mode
 - PWA installability supported with proper manifest
