@@ -104,43 +104,72 @@ function extractArticleData(
   }
 }
 
-async function processArticle(articleData: ArticleInput): Promise<void> {
-  try {
-    console.log(`Processing: ${articleData.title}`);
+// カテゴリーは 4 種類しかないので、ページごとに引き直さず一度だけ解決する。
+// 記事 1 件ずつ upsert していたころは、ここだけで往復の 4 分の 1 を使っていた。
+let categoryIdCache: Map<string, string> | null = null;
 
-    await prisma.$transaction(async (tx) => {
-      const category = await tx.category.upsert({
-        create: { name: articleData.category },
-        update: {},
-        where: { name: articleData.category },
-      });
+async function resolveCategoryIds(): Promise<Map<string, string>> {
+  if (categoryIdCache) {
+    return categoryIdCache;
+  }
 
-      // ライターの紐付けは /api/link-writers が持つので、ここでは触らない。
-      await tx.article.upsert({
-        create: {
-          category: { connect: { id: category.id } },
-          publishedAt: articleData.publishedAt,
-          thumbnail: articleData.thumbnail,
-          title: articleData.title,
-          url: articleData.url,
-        },
-        update: {
-          category: { connect: { id: category.id } },
-          publishedAt: articleData.publishedAt,
-          thumbnail: articleData.thumbnail,
-          title: articleData.title,
-        },
-        where: { url: articleData.url },
-      });
+  const names = [...new Set(Object.values(CATEGORY_BY_SEGMENT))];
+  const resolved = new Map<string, string>();
+
+  for (const name of names) {
+    const category = await prisma.category.upsert({
+      create: { name },
+      update: {},
+      where: { name },
     });
-  } catch (error) {
-    console.error("Error processing article:", {
-      error: error instanceof Error ? error.message : "Unknown error",
+
+    resolved.set(name, category.id);
+  }
+
+  categoryIdCache = resolved;
+
+  return resolved;
+}
+
+// 一括投入が失敗したときだけ、どの行が悪いのかを切り分けるために 1 件ずつやり直す。
+async function upsertArticle(
+  articleData: ArticleInput,
+  categoryId: string,
+): Promise<void> {
+  await prisma.article.upsert({
+    create: {
+      categoryId,
+      publishedAt: articleData.publishedAt,
+      thumbnail: articleData.thumbnail,
       title: articleData.title,
       url: articleData.url,
-    });
-    throw error;
+    },
+    update: {
+      categoryId,
+      publishedAt: articleData.publishedAt,
+      thumbnail: articleData.thumbnail,
+      title: articleData.title,
+    },
+    where: { url: articleData.url },
+  });
+}
+
+async function withRetry<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      if (attempt < MAX_RETRIES) {
+        await sleep(RETRY_DELAY);
+      }
+    }
   }
+
+  throw lastError;
 }
 
 type PageFailure = {
@@ -155,6 +184,7 @@ async function fetchAndProcessPage(pageUrl: string): Promise<{
   rowCount: number;
 }> {
   const failures: PageFailure[] = [];
+  const categoryIds = await resolveCategoryIds();
   const response = await fetch(pageUrl);
 
   if (!response.ok) {
@@ -177,29 +207,69 @@ async function fetchAndProcessPage(pageUrl: string): Promise<{
     where: { url: { in: urls } },
   });
   const existingUrls = new Set(existing.map((a) => a.url));
-  const newArticles = urls.filter((u) => !existingUrls.has(u)).length;
+  const toCreate = articles.filter((a) => !existingUrls.has(a.url));
+  const toUpdate = articles.filter((a) => existingUrls.has(a.url));
+
+  console.log(
+    `${pageUrl}: ${toCreate.length} new, ${toUpdate.length} already stored`,
+  );
+
+  // 新規はまとめて 1 往復で入れる。同じ URL が同一ページに二度出ることがあるので
+  // skipDuplicates を付ける。失敗したら 1 件ずつやり直して、悪い行だけを報告する。
+  if (toCreate.length > 0) {
+    try {
+      await withRetry(async () =>
+        prisma.article.createMany({
+          data: toCreate.map((a) => ({
+            categoryId: categoryIds.get(a.category) ?? "",
+            publishedAt: a.publishedAt,
+            thumbnail: a.thumbnail,
+            title: a.title,
+            url: a.url,
+          })),
+          skipDuplicates: true,
+        }),
+      );
+    } catch (error) {
+      console.error(
+        `Bulk insert failed on ${pageUrl}, falling back to one by one:`,
+        error instanceof Error ? error.message : String(error),
+      );
+      failures.push(...(await upsertOneByOne(toCreate, categoryIds, pageUrl)));
+    }
+  }
+
+  // 既に入っている記事はタイトルやサムネイルが差し替わることがあるので更新する。
+  // 通常の巡回では 0 件から数件で、初回取り込みでは発生しない。
+  failures.push(...(await upsertOneByOne(toUpdate, categoryIds, pageUrl)));
+
+  return { failures, newArticles: toCreate.length, rowCount: rows.length };
+}
+
+async function upsertOneByOne(
+  articles: ArticleInput[],
+  categoryIds: Map<string, string>,
+  pageUrl: string,
+): Promise<PageFailure[]> {
+  const failures: PageFailure[] = [];
 
   for (const articleData of articles) {
-    let lastError: unknown;
+    const categoryId = categoryIds.get(articleData.category);
 
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        await processArticle(articleData);
-        lastError = undefined;
+    if (!categoryId) {
+      failures.push({
+        error: `Unknown category: ${articleData.category}`,
+        pageUrl,
+        url: articleData.url,
+      });
 
-        break;
-      } catch (error) {
-        lastError = error;
-
-        if (attempt < MAX_RETRIES) {
-          await sleep(RETRY_DELAY);
-        }
-      }
+      continue;
     }
 
-    if (lastError) {
-      const message =
-        lastError instanceof Error ? lastError.message : String(lastError);
+    try {
+      await withRetry(async () => upsertArticle(articleData, categoryId));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
 
       console.error(
         `Failed to process article after ${MAX_RETRIES} attempts: ${articleData.url} — ${message}`,
@@ -208,7 +278,7 @@ async function fetchAndProcessPage(pageUrl: string): Promise<{
     }
   }
 
-  return { failures, newArticles, rowCount: rows.length };
+  return failures;
 }
 
 function parsePositiveInt(value: null | string, fallback: number): number {
