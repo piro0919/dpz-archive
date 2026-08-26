@@ -1,0 +1,126 @@
+.container {
+  display: grid;
+  gap: min(12px, 2dvw);
+  margin: 0 auto;
+  padding: min(12px, 2dvw);
+  width: min(100%, 1280px);
+}
+
+.header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.texts {
+  align-items: center;
+  display: flex;
+  gap: min(12px, 2dvw);
+}
+
+.count {
+  font-size: 1.4rem;
+  white-space: nowrap;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: min(12px, 2dvw);
+  justify-content: flex-end;
+}
+
+.button {
+  background: hsl(from var(--card) h s l);
+  border: 1px solid hsl(from var(--border) h s l);
+  border-radius: 6px;
+  font-size: 1.2rem;
+  padding: 6px 12px;
+}
+
+.button:disabled {
+  background: hsl(from var(--foreground) h s l);
+  color: hsl(from var(--background) h s l);
+}
+
+.list {
+  display: grid;
+  gap: min(12px, 2dvw);
+  grid-template: auto / repeat(auto-fill, minmax(250px, 1fr));
+}
+
+.item {
+  background: hsl(from var(--card) h s l);
+  border: 1px solid hsl(from var(--border) h s l / 0.5);
+}
+
+.link {
+  @media (width < 532px) {
+    display: grid;
+    grid-template-columns: 35% 1fr;
+  }
+}
+
+.thumbnail {
+  aspect-ratio: 264 / 138;
+  position: relative;
+}
+
+.image {
+  object-fit: cover;
+}
+
+.detail {
+  display: grid;
+  gap: min(12px, 2dvw);
+  padding: calc(min(12px, 2dvw) / 2);
+}
+
+.title {
+  /* 2行で切る。JS で測って切っていたときは、題名が出るまで描画が待たされていた。 */
+  -webkit-box-orient: vertical;
+  display: -webkit-box;
+  font-size: 1.4rem;
+  font-weight: 700;
+  -webkit-line-clamp: 2;
+  line-height: 1.25;
+  overflow: hidden;
+}
+
+.meta {
+  /* align-items: center; */
+  display: flex;
+  gap: calc(min(12px, 2dvw) / 3);
+  justify-content: space-between;
+
+  @media (width <= 574px) {
+    align-items: flex-end;
+  }
+}
+
+.metaButtons {
+  align-content: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(min(12px, 2dvw) / 3);
+}
+
+.category,
+.writer {
+  border: 1px solid hsl(from var(--border) h s l);
+  border-radius: 6px;
+  font-size: 1.1rem;
+  /* 指で押す対象は 24px 以上。高さが 22px しか無く、Lighthouse の target-size が 0 だった。 */
+  min-height: 24px;
+  padding: 3px 6px;
+}
+
+.publishedAt {
+  font-size: 1.2rem;
+  padding: 3px 0;
+  text-align: right;
+}
+
+.completed {
+  font-size: 1.4rem;
+}

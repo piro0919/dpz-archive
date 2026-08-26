@@ -1,0 +1,179 @@
+.header {
+  backdrop-filter: blur(1px);
+  background: hsl(from var(--card) h s l / 0.95);
+  border-bottom: 1px solid hsl(from var(--border) h s l);
+  height: 60px;
+  position: relative;
+}
+
+.inner {
+  align-items: center;
+  display: flex;
+  gap: min(18px, 2dvw);
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 min(24px, 4dvw) 0 min(12px, 2dvw);
+  position: relative;
+  width: min(100%, 1280px);
+
+  @media (width < 740px) {
+    justify-content: space-between;
+  }
+}
+
+.logo {
+  aspect-ratio: 1220 / 184;
+  height: min(36px, 7.2dvw);
+  position: relative;
+}
+
+.form {
+  @media (width < 980px) {
+    display: none;
+  }
+}
+
+.searchContainer {
+  align-items: center;
+  background: hsl(from var(--card) h s l);
+  border: 1px solid hsl(from var(--border) h s l);
+  border-radius: 50dvmax;
+  display: grid;
+  font-size: 1.4rem;
+  grid-template-columns: 1fr auto auto;
+  overflow: hidden;
+  width: 280px;
+}
+
+.searchInput {
+  padding: 3px 0 3px 12px;
+}
+
+.clearButton,
+.clearButton2 {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  padding: 0 6px;
+}
+
+.clearButton:disabled {
+  opacity: 0;
+}
+
+.clearButton2:disabled {
+  opacity: 0.5;
+}
+
+.submitButton {
+  align-items: center;
+  background: hsl(from var(--background) h s l);
+  border-left: 1px solid hsl(from var(--border) h s l);
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  padding: 3px 12px;
+}
+
+.buttons {
+  display: flex;
+  gap: min(12px, 2dvw);
+}
+
+.searchButton {
+  @media (980px <= width) {
+    display: none;
+  }
+}
+
+.nav {
+  display: flex;
+  gap: min(18px, 2dvw);
+  height: 36px;
+  inset: auto 0 0 auto;
+  padding: 0 min(24px, 4dvw) 0 min(12px, 2dvw);
+  position: absolute;
+
+  @media (width < 740px) {
+    display: none;
+  }
+}
+
+.navLink {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.navLinkActive {
+  position: relative;
+}
+
+.navLinkActive::before {
+  background: hsl(from var(--active) h s l);
+  bottom: 0;
+  content: "";
+  height: 3px;
+  left: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.navLink:not(.navLinkActive) {
+  opacity: 0.5;
+}
+
+.navLinkText {
+  font-size: 1.4rem;
+}
+
+.mobileCalendarButton {
+  @media (740px <= width) {
+    display: none;
+  }
+}
+
+.calendarButton {
+  @media (width < 740px) {
+    display: none;
+  }
+}
+
+.floating {
+  align-items: center;
+  background: hsl(from var(--card) h s l);
+  border: 1px solid hsl(from var(--border) h s l);
+  border-radius: 6px;
+  display: flex;
+  gap: 6px;
+  padding: 12px;
+  top: 12px !important;
+  z-index: 100;
+
+  @media (width < 740px) {
+    display: none;
+  }
+}
+
+.separator {
+  font-size: 1.4rem;
+}
+
+.input {
+  border: 1px solid hsl(from var(--border) h s l);
+  border-radius: 6px;
+  font-size: 1.4rem;
+  padding: 6px 12px;
+}
+
+.mobileSearch {
+  @media (980px <= width) {
+    display: none;
+  }
+}
+
+.mobileDateRange {
+  @media (740px <= width) {
+    display: none;
+  }
+}

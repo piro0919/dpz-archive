@@ -1,0 +1,49 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider = "postgresql"
+  // 接続 URL は Prisma 7 から prisma.config.ts で渡す。
+  // pg_trgm powers the trigram GIN index used for title keyword search
+  extensions = [pg_trgm]
+}
+
+// 記事モデル
+model Article {
+  id          String    @id @default(cuid())
+  title       String // 記事タイトル
+  url         String    @unique // オリジナルの記事URL
+  thumbnail   String // サムネイル画像URL
+  categoryId  String // カテゴリID
+  publishedAt DateTime // 公開日時
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  category Category @relation(fields: [categoryId], references: [id])
+  writers  Writer[]
+
+  @@index([publishedAt])
+  @@index([categoryId])
+  // Trigram GIN index so title keyword search (ILIKE %word%) uses an index
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+// カテゴリモデル
+model Category {
+  id        String    @id @default(cuid())
+  name      String    @unique // 記事、編集部日記、これすごくない？、TV
+  articles  Article[]
+}
+
+// ライターモデル
+model Writer {
+  id         String    @id @default(cuid())
+  name       String    @unique // ライター名
+  profileUrl String // プロフィールページURL
+  avatarUrl  String // アバター画像URL
+  articles   Article[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}

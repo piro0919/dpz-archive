@@ -1,0 +1,20 @@
+.nav {
+  background: hsl(from var(--card) h s l);
+  border-top: 1px solid hsl(from var(--border) h s l);
+  display: flex;
+  height: calc(60px + env(safe-area-inset-bottom));
+  padding: 0 0 env(safe-area-inset-bottom);
+}
+
+.link {
+  align-items: center;
+  color: hsl(from var(--muted) h s l);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.linkActive {
+  color: hsl(from var(--active) h s l);
+}
