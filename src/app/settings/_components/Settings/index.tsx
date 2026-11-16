@@ -9,13 +9,7 @@ const Toggle = dynamic(async () => import("react-toggle"), { ssr: false });
 
 export default function Settings(): React.JSX.Element {
   const { setTheme, theme } = useTheme();
-  const {
-    appinstalled,
-    canInstallprompt,
-    enabledPwa,
-    isPwa,
-    showInstallPrompt,
-  } = usePwa();
+  const { canInstall, install, isInstalled, isSupported } = usePwa();
 
   return (
     <div className={styles.container}>
@@ -29,13 +23,15 @@ export default function Settings(): React.JSX.Element {
             defaultChecked={theme === "dark"}
           />
         </label>
-        {enabledPwa && !isPwa ? (
+        {isSupported && !isInstalled ? (
           <div className={styles.label}>
             <span className={styles.labelText}>ホーム画面に追加する</span>
             <button
+              onClick={() => {
+                void install();
+              }}
               className={styles.button}
-              disabled={!canInstallprompt || appinstalled}
-              onClick={showInstallPrompt}
+              disabled={!canInstall}
             >
               <IconDownload size={18} />
               <span className={styles.buttonText}>インストール</span>
